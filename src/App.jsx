@@ -52,6 +52,40 @@ async function deleteTaskDb(taskId) {
   await supabase.from("tasks").delete().eq("id", taskId);
 }
 
+/* ── Admin operations ── */
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "";
+
+async function loadAllLists() {
+  const { data: lists } = await supabase
+    .from("lists")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (!lists) return [];
+
+  // Get task counts for each list
+  const results = await Promise.all(
+    lists.map(async (list) => {
+      const { count: totalTasks } = await supabase
+        .from("tasks")
+        .select("*", { count: "exact", head: true })
+        .eq("list_id", list.id);
+      const { count: completedTasks } = await supabase
+        .from("tasks")
+        .select("*", { count: "exact", head: true })
+        .eq("list_id", list.id)
+        .eq("completed", true);
+      return { ...list, totalTasks: totalTasks || 0, completedTasks: completedTasks || 0 };
+    })
+  );
+  return results;
+}
+
+async function deleteList(listId) {
+  // Tasks are deleted automatically via ON DELETE CASCADE
+  const { error } = await supabase.from("lists").delete().eq("id", listId);
+  return !error;
+}
+
 /* ── Components ── */
 
 function Checkbox({ checked, onChange }) {
@@ -341,7 +375,7 @@ function ListView({ listId, onBack }) {
   );
 }
 
-function HomeView({ onCreate, onOpen }) {
+function HomeView({ onCreate, onOpen, onAdmin }) {
   const [joinId, setJoinId] = useState("");
   const [listName, setListName] = useState("");
 
@@ -411,6 +445,164 @@ function HomeView({ onCreate, onOpen }) {
             }}>open</button>
         </div>
       </div>
+
+      {/* Admin link */}
+      <div style={{ textAlign: "center", marginTop: 32 }}>
+        <button onClick={onAdmin} style={{
+          background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace",
+          fontSize: 12, color: "#c4c0b8",
+        }}>admin</button>
+      </div>
+    </div>
+  );
+}
+
+function AdminView({ onBack, onOpenList }) {
+  const [authed, setAuthed] = useState(false);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [lists, setLists] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+
+  const handleLogin = () => {
+    if (!ADMIN_PASSWORD) {
+      setError("Admin password not configured. Add VITE_ADMIN_PASSWORD in Vercel.");
+      return;
+    }
+    if (password === ADMIN_PASSWORD) {
+      setAuthed(true);
+      setError("");
+      refresh();
+    } else {
+      setError("Wrong password");
+    }
+  };
+
+  const refresh = async () => {
+    setLoading(true);
+    const data = await loadAllLists();
+    setLists(data);
+    setLoading(false);
+  };
+
+  const handleDelete = async (listId, listName) => {
+    if (!confirm(`Delete "${listName}" and all its tasks? This cannot be undone.`)) return;
+    setDeleting(listId);
+    await deleteList(listId);
+    setLists((prev) => prev.filter((l) => l.id !== listId));
+    setDeleting(null);
+  };
+
+  if (!authed) {
+    return (
+      <div style={{ maxWidth: 400, margin: "0 auto" }}>
+        <button onClick={onBack} style={{
+          background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace",
+          fontSize: 13, color: "#8a847b", padding: "4px 0", marginBottom: 32,
+        }}>← back</button>
+        <h1 style={{
+          fontFamily: "'DM Sans', sans-serif", fontSize: 28, fontWeight: 700,
+          color: "#2c2a25", margin: "0 0 8px 0",
+        }}>Admin</h1>
+        <p style={{
+          fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: "#8a847b", marginBottom: 24,
+        }}>Enter admin password to manage lists.</p>
+        <div style={{
+          padding: 24, background: "#fff", borderRadius: 12, border: "1px solid #e8e4dc",
+        }}>
+          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password"
+            onKeyDown={(e) => { if (e.key === "Enter") handleLogin(); }}
+            placeholder="Password" autoFocus style={{
+              width: "100%", padding: "12px 0", border: "none", borderBottom: "1.5px solid #e8e4dc",
+              background: "transparent", fontSize: 16, fontFamily: "'DM Mono', monospace",
+              outline: "none", color: "#2c2a25", boxSizing: "border-box",
+            }}
+          />
+          {error && (
+            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: "#c44", marginTop: 10 }}>{error}</div>
+          )}
+          <button onClick={handleLogin} style={{
+            width: "100%", marginTop: 16, padding: "12px", background: "#2c2a25",
+            color: "#faf8f4", border: "none", borderRadius: 8, fontSize: 14,
+            fontFamily: "'DM Mono', monospace", cursor: "pointer",
+          }}>log in →</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
+        <button onClick={onBack} style={{
+          background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace",
+          fontSize: 13, color: "#8a847b", padding: "4px 0",
+        }}>← back</button>
+        <button onClick={refresh} style={{
+          background: "#f0ece4", border: "none", borderRadius: 6,
+          padding: "6px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace",
+          fontSize: 12, color: "#6b6660",
+        }}>↻ refresh</button>
+      </div>
+
+      <h1 style={{
+        fontFamily: "'DM Sans', sans-serif", fontSize: 28, fontWeight: 700,
+        color: "#2c2a25", margin: "0 0 6px 0",
+      }}>Admin Panel</h1>
+      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#a09b93", marginBottom: 32 }}>
+        {lists.length} list{lists.length !== 1 ? "s" : ""} total
+      </div>
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: 40, color: "#a09b93", fontFamily: "'DM Mono', monospace", fontSize: 14 }}>
+          loading...
+        </div>
+      )}
+
+      {!loading && lists.length === 0 && (
+        <div style={{ textAlign: "center", padding: 40, color: "#c4c0b8" }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
+          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15 }}>No lists yet</div>
+        </div>
+      )}
+
+      {lists.map((list) => (
+        <div key={list.id} style={{
+          padding: "16px 20px", background: "#fff", borderRadius: 10,
+          border: "1px solid #e8e4dc", marginBottom: 8,
+          display: "flex", alignItems: "center", gap: 14,
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontFamily: "'DM Sans', sans-serif", fontSize: 15, fontWeight: 500, color: "#2c2a25",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{list.name}</div>
+            <div style={{
+              fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#a09b93", marginTop: 4,
+              display: "flex", gap: 12, flexWrap: "wrap",
+            }}>
+              <span>id: {list.id}</span>
+              <span>{list.totalTasks} task{list.totalTasks !== 1 ? "s" : ""}</span>
+              <span>{list.completedTasks} done</span>
+              <span>{new Date(list.created_at).toLocaleDateString()}</span>
+            </div>
+          </div>
+          <button onClick={() => onOpenList(list.id)} style={{
+            padding: "6px 12px", background: "#f0ece4", border: "none", borderRadius: 6,
+            fontSize: 12, fontFamily: "'DM Mono', monospace", cursor: "pointer", color: "#6b6660",
+            flexShrink: 0,
+          }}>open</button>
+          <button onClick={() => handleDelete(list.id, list.name)}
+            disabled={deleting === list.id} style={{
+              padding: "6px 12px", background: deleting === list.id ? "#f5f3ee" : "transparent",
+              color: deleting === list.id ? "#a09b93" : "#c44",
+              border: "1px solid #e4cccc", borderRadius: 6, fontSize: 12,
+              fontFamily: "'DM Mono', monospace", cursor: deleting === list.id ? "default" : "pointer",
+              flexShrink: 0,
+            }}>{deleting === list.id ? "..." : "delete"}</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -418,15 +610,18 @@ function HomeView({ onCreate, onOpen }) {
 /* ── App ── */
 export default function TaskManager() {
   const [currentList, setCurrentList] = useState(null);
+  const [showAdmin, setShowAdmin] = useState(false);
 
-  // Read list ID from URL hash on load
+  // Read from URL hash on load
   useEffect(() => {
     const hash = window.location.hash.slice(1);
-    if (hash) setCurrentList(hash);
+    if (hash === "admin") setShowAdmin(true);
+    else if (hash) setCurrentList(hash);
   }, []);
 
   // Update URL hash when navigating
   const navigate = (listId) => {
+    setShowAdmin(false);
     if (listId) {
       window.location.hash = listId;
     } else {
@@ -435,11 +630,18 @@ export default function TaskManager() {
     setCurrentList(listId);
   };
 
+  const navigateAdmin = () => {
+    setCurrentList(null);
+    setShowAdmin(true);
+    window.location.hash = "admin";
+  };
+
   // Handle browser back/forward
   useEffect(() => {
     const onHash = () => {
       const hash = window.location.hash.slice(1);
-      setCurrentList(hash || null);
+      if (hash === "admin") { setShowAdmin(true); setCurrentList(null); }
+      else { setShowAdmin(false); setCurrentList(hash || null); }
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -452,7 +654,6 @@ export default function TaskManager() {
   };
 
   const handleOpen = (input) => {
-    // Accept either a raw ID or a full URL with hash
     const match = input.match(/#(.+)$/);
     const id = match ? match[1] : input.trim();
     navigate(id);
@@ -461,10 +662,12 @@ export default function TaskManager() {
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'DM Sans', sans-serif" }}>
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "48px 20px 80px" }}>
-        {currentList ? (
+        {showAdmin ? (
+          <AdminView onBack={() => navigate(null)} onOpenList={(id) => navigate(id)} />
+        ) : currentList ? (
           <ListView listId={currentList} onBack={() => navigate(null)} />
         ) : (
-          <HomeView onCreate={handleCreate} onOpen={handleOpen} />
+          <HomeView onCreate={handleCreate} onOpen={handleOpen} onAdmin={navigateAdmin} />
         )}
       </div>
     </div>
