@@ -62,7 +62,6 @@ async function loadAllLists() {
     .order("created_at", { ascending: false });
   if (!lists) return [];
 
-  // Get task counts for each list
   const results = await Promise.all(
     lists.map(async (list) => {
       const { count: totalTasks } = await supabase
@@ -80,35 +79,68 @@ async function loadAllLists() {
   return results;
 }
 
-async function deleteList(listId) {
-  // Tasks are deleted automatically via ON DELETE CASCADE
+async function deleteListDb(listId) {
   const { error } = await supabase.from("lists").delete().eq("id", listId);
   return !error;
 }
+
+/* ── Design tokens ── */
+const C = {
+  bg: "#f5f5f4",
+  card: "#ffffff",
+  cardMuted: "#f9fafb",
+  border: "#e5e7eb",
+  borderLight: "#f0f0f0",
+  text: "#1a1a1a",
+  textMuted: "#6b7280",
+  textFaint: "#a1a1aa",
+  textGhost: "#c0c4cc",
+  textDimmed: "#d1d5db",
+  accent: "#16a34a",
+  accentHover: "#15803d",
+  btnBg: "#1a1a1a",
+  btnText: "#ffffff",
+  btnMuted: "#f0f0f0",
+  danger: "#dc2626",
+  dangerBorder: "#fecaca",
+  mono: "'JetBrains Mono', monospace",
+  sans: "'Inter', system-ui, sans-serif",
+};
 
 /* ── Components ── */
 
 function Checkbox({ checked, onChange }) {
   return (
     <button onClick={onChange} style={{
-      width: 22, height: 22, borderRadius: 4, border: `2px solid ${checked ? "#3d6b4f" : "#bbb5a7"}`,
-      background: checked ? "#3d6b4f" : "transparent", cursor: "pointer", display: "flex",
-      alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s ease",
+      width: 24, height: 24, borderRadius: 24,
+      border: `2px solid ${checked ? C.accent : C.textDimmed}`,
+      background: checked ? C.accent : "transparent",
+      cursor: "pointer", display: "flex",
+      alignItems: "center", justifyContent: "center", flexShrink: 0,
+      transition: "all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
     }}>
-      {checked && (
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      )}
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{
+        opacity: checked ? 1 : 0, transition: "opacity 0.3s ease",
+        transform: checked ? "scale(1)" : "scale(0.5)",
+      }}>
+        <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
     </button>
   );
 }
 
-function TaskItem({ task, onToggle, onUpdate, onDelete }) {
+function TaskItem({ task, onToggle, onUpdate, onDelete, index }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(task.name);
   const [notes, setNotes] = useState(task.notes || "");
+  const [animating, setAnimating] = useState(false);
+  const [visible, setVisible] = useState(false);
   const nameRef = useRef(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), (index || 0) * 60);
+    return () => clearTimeout(t);
+  }, [index]);
 
   useEffect(() => { if (editing && nameRef.current) nameRef.current.focus(); }, [editing]);
 
@@ -129,38 +161,44 @@ function TaskItem({ task, onToggle, onUpdate, onDelete }) {
     if (e.key === "Escape") handleCancel();
   };
 
+  const handleToggle = () => {
+    setAnimating(true);
+    setTimeout(() => { onToggle(task.id); setAnimating(false); }, 400);
+  };
+
   if (editing) {
     return (
       <div style={{
-        padding: "16px 20px", background: "#faf8f4", borderRadius: 10,
-        border: "1.5px solid #d4cfc4", marginBottom: 8,
+        padding: "18px 22px", background: C.cardMuted, borderRadius: 14,
+        border: `1.5px solid ${C.border}`, marginBottom: 6,
+        opacity: visible ? 1 : 0, transition: "opacity 0.3s ease",
       }}>
         <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={handleKeyDown}
           placeholder="Task name" style={{
-            width: "100%", padding: "8px 0", border: "none", borderBottom: "1.5px solid #d4cfc4",
-            background: "transparent", fontSize: 15, fontFamily: "'DM Sans', sans-serif",
-            fontWeight: 500, outline: "none", color: "#2c2a25", boxSizing: "border-box",
+            width: "100%", padding: "8px 0", border: "none", borderBottom: `1.5px solid ${C.border}`,
+            background: "transparent", fontSize: 15, fontFamily: C.sans,
+            fontWeight: 500, outline: "none", color: C.text, boxSizing: "border-box",
           }}
         />
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onKeyDown={handleKeyDown}
           placeholder="Notes (optional)" rows={2} style={{
             width: "100%", padding: "8px 0", border: "none", background: "transparent",
-            fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", color: "#6b6660",
+            fontSize: 13, fontFamily: C.sans, outline: "none", color: C.textMuted,
             resize: "vertical", marginTop: 8, boxSizing: "border-box",
           }}
         />
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <button onClick={handleSave} style={{
-            padding: "6px 16px", background: "#2c2a25", color: "#faf8f4", border: "none",
-            borderRadius: 6, fontSize: 13, fontFamily: "'DM Mono', monospace", cursor: "pointer",
+            padding: "7px 18px", background: C.btnBg, color: C.btnText, border: "none",
+            borderRadius: 8, fontSize: 13, fontFamily: C.mono, fontWeight: 500, cursor: "pointer",
           }}>save</button>
           <button onClick={handleCancel} style={{
-            padding: "6px 16px", background: "transparent", color: "#6b6660", border: "1px solid #d4cfc4",
-            borderRadius: 6, fontSize: 13, fontFamily: "'DM Mono', monospace", cursor: "pointer",
+            padding: "7px 18px", background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`,
+            borderRadius: 8, fontSize: 13, fontFamily: C.mono, cursor: "pointer",
           }}>cancel</button>
           <button onClick={() => onDelete(task.id)} style={{
-            padding: "6px 16px", background: "transparent", color: "#c44", border: "1px solid #e4cccc",
-            borderRadius: 6, fontSize: 13, fontFamily: "'DM Mono', monospace", cursor: "pointer", marginLeft: "auto",
+            padding: "7px 18px", background: "transparent", color: C.danger, border: `1px solid ${C.dangerBorder}`,
+            borderRadius: 8, fontSize: 13, fontFamily: C.mono, cursor: "pointer", marginLeft: "auto",
           }}>delete</button>
         </div>
       </div>
@@ -169,25 +207,35 @@ function TaskItem({ task, onToggle, onUpdate, onDelete }) {
 
   return (
     <div style={{
-      padding: "14px 20px", background: task.completed ? "#f5f3ee" : "#fff",
-      borderRadius: 10, border: "1px solid #e8e4dc", marginBottom: 8,
-      display: "flex", alignItems: "flex-start", gap: 14, transition: "all 0.2s ease",
+      padding: "18px 22px",
+      background: task.completed ? C.cardMuted : C.card,
+      borderRadius: 14,
+      border: `1px solid ${task.completed ? C.borderLight : C.border}`,
+      marginBottom: 6,
+      display: "flex", alignItems: "flex-start", gap: 16,
+      transition: "all 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
+      opacity: visible ? (animating ? 0.5 : 1) : 0,
+      transform: visible ? (animating ? "translateX(20px)" : "translateX(0)") : "translateY(12px)",
       cursor: "pointer",
+      boxShadow: task.completed ? "none" : "0 1px 3px rgba(0,0,0,0.03)",
     }} onClick={() => setEditing(true)}>
       <div style={{ paddingTop: 1 }} onClick={(e) => e.stopPropagation()}>
-        <Checkbox checked={task.completed} onChange={() => onToggle(task.id)} />
+        <Checkbox checked={task.completed} onChange={handleToggle} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 15, fontWeight: 500, color: task.completed ? "#a09b93" : "#2c2a25",
-          fontFamily: "'DM Sans', sans-serif",
+          fontSize: 15, fontWeight: 500,
+          color: task.completed ? C.textGhost : C.text,
+          fontFamily: C.sans,
           textDecoration: task.completed ? "line-through" : "none",
-          transition: "all 0.2s ease",
+          textDecorationColor: C.textDimmed,
+          transition: "all 0.4s ease",
         }}>{task.name}</div>
         {task.notes && (
           <div style={{
-            fontSize: 13, color: task.completed ? "#c4c0b8" : "#8a847b", marginTop: 4,
-            fontFamily: "'DM Sans', sans-serif", lineHeight: 1.4,
+            fontSize: 13, color: task.completed ? "#d8dae0" : C.textMuted, marginTop: 5,
+            fontFamily: C.sans, lineHeight: 1.4,
+            transition: "color 0.4s ease",
           }}>{task.notes}</div>
         )}
       </div>
@@ -214,7 +262,6 @@ function ListView({ listId, onBack }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Auto-refresh every 4 seconds for collaboration
   useEffect(() => {
     const interval = setInterval(refresh, 4000);
     return () => clearInterval(interval);
@@ -265,20 +312,20 @@ function ListView({ listId, onBack }) {
 
   if (loading) return (
     <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
-      <div style={{ color: "#a09b93", fontFamily: "'DM Mono', monospace", fontSize: 14 }}>loading...</div>
+      <div style={{ color: C.textFaint, fontFamily: C.mono, fontSize: 14 }}>loading...</div>
     </div>
   );
 
   if (notFound) return (
     <div style={{ textAlign: "center", padding: 60 }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>🤷</div>
-      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 18, color: "#2c2a25", fontWeight: 600 }}>List not found</div>
-      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: "#8a847b", marginTop: 8 }}>
-        This list doesn't exist or may have been deleted.
+      <div style={{ fontFamily: C.sans, fontSize: 18, color: C.text, fontWeight: 600 }}>List not found</div>
+      <div style={{ fontFamily: C.sans, fontSize: 14, color: C.textMuted, marginTop: 8 }}>
+        This list does not exist or may have been deleted.
       </div>
       <button onClick={onBack} style={{
-        marginTop: 24, padding: "10px 24px", background: "#2c2a25", color: "#faf8f4",
-        border: "none", borderRadius: 8, fontSize: 14, fontFamily: "'DM Mono', monospace", cursor: "pointer",
+        marginTop: 24, padding: "10px 24px", background: C.btnBg, color: C.btnText,
+        border: "none", borderRadius: 10, fontSize: 14, fontFamily: C.mono, fontWeight: 500, cursor: "pointer",
       }}>← go back</button>
     </div>
   );
@@ -290,85 +337,98 @@ function ListView({ listId, onBack }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
         <button onClick={onBack} style={{
-          background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace",
-          fontSize: 13, color: "#8a847b", padding: "4px 0",
+          background: "none", border: "none", cursor: "pointer", fontFamily: C.mono,
+          fontSize: 13, color: C.textFaint, padding: "4px 0",
         }}>← new list</button>
         <button onClick={copyLink} style={{
-          background: copied ? "#3d6b4f" : "#f0ece4", border: "none", borderRadius: 6,
-          padding: "6px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace",
-          fontSize: 12, color: copied ? "#fff" : "#6b6660", transition: "all 0.2s ease",
+          background: copied ? C.accent : C.btnMuted, border: "none", borderRadius: 8,
+          padding: "6px 14px", cursor: "pointer", fontFamily: C.mono,
+          fontSize: 12, color: copied ? "#fff" : C.textMuted, transition: "all 0.3s ease",
         }}>{copied ? "link copied ✓" : "copy share link"}</button>
       </div>
 
-      <h1 style={{
-        fontFamily: "'DM Sans', sans-serif", fontSize: 28, fontWeight: 700,
-        color: "#2c2a25", margin: "0 0 6px 0",
-      }}>{list.name}</h1>
-      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#a09b93", marginBottom: 32 }}>
-        {list.tasks.length} task{list.tasks.length !== 1 ? "s" : ""} · {completed.length} done
+      <div style={{ marginBottom: 40 }}>
+        <div style={{
+          fontFamily: C.mono, fontSize: 11, letterSpacing: 4,
+          textTransform: "uppercase", color: C.accent, marginBottom: 16,
+        }}>⬡ shared list</div>
+        <h1 style={{
+          fontSize: 32, fontWeight: 700, color: C.text, margin: 0, lineHeight: 1.1,
+          fontFamily: C.sans, letterSpacing: -0.5,
+        }}>{list.name}</h1>
+        <div style={{
+          fontFamily: C.mono, fontSize: 12, color: C.textFaint, marginTop: 10,
+          display: "flex", gap: 16,
+        }}>
+          <span>{active.length} active</span>
+          <span>·</span>
+          <span>{completed.length} done</span>
+        </div>
       </div>
 
-      {/* Add task */}
       <div style={{
-        padding: "16px 20px", background: "#faf8f4", borderRadius: 10,
-        border: "1.5px dashed #d4cfc4", marginBottom: 24,
+        padding: "4px 4px 4px 20px", background: C.card, borderRadius: 14,
+        border: `1px solid ${C.border}`, marginBottom: 24,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <input ref={inputRef} value={newName} onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addTask(); } }}
             placeholder="Add a task..."
             style={{
-              flex: 1, padding: "8px 0", border: "none", background: "transparent",
-              fontSize: 15, fontFamily: "'DM Sans', sans-serif", fontWeight: 500,
-              outline: "none", color: "#2c2a25",
+              flex: 1, padding: "14px 0", border: "none", background: "transparent",
+              fontSize: 15, fontFamily: C.sans, outline: "none", color: C.text,
             }}
           />
           <button onClick={addTask} disabled={!newName.trim()} style={{
-            padding: "6px 18px", background: newName.trim() ? "#2c2a25" : "#e8e4dc",
-            color: newName.trim() ? "#faf8f4" : "#a09b93", border: "none", borderRadius: 6,
-            fontSize: 13, fontFamily: "'DM Mono', monospace", cursor: newName.trim() ? "pointer" : "default",
-            transition: "all 0.2s ease",
+            padding: "10px 20px",
+            background: newName.trim() ? C.accent : C.btnMuted,
+            color: newName.trim() ? "#fff" : C.textFaint,
+            border: "none", borderRadius: 10,
+            fontSize: 13, fontFamily: C.mono, fontWeight: 500,
+            cursor: newName.trim() ? "pointer" : "default",
+            transition: "all 0.3s ease",
           }}>add</button>
         </div>
         {(showNotes || newNotes) ? (
-          <textarea value={newNotes} onChange={(e) => setNewNotes(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addTask(); } }}
-            placeholder="Notes (optional)" rows={2} style={{
-              width: "100%", padding: "8px 0", border: "none", borderTop: "1px solid #e8e4dc",
-              background: "transparent", fontSize: 13, fontFamily: "'DM Sans', sans-serif",
-              outline: "none", color: "#6b6660", resize: "vertical", marginTop: 10, boxSizing: "border-box",
-            }}
-          />
+          <div style={{ padding: "0 0 10px 0" }}>
+            <textarea value={newNotes} onChange={(e) => setNewNotes(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addTask(); } }}
+              placeholder="Notes (optional)" rows={2} style={{
+                width: "100%", padding: "8px 0", border: "none", borderTop: `1px solid ${C.border}`,
+                background: "transparent", fontSize: 13, fontFamily: C.sans,
+                outline: "none", color: C.textMuted, resize: "vertical", marginTop: 6, boxSizing: "border-box",
+              }}
+            />
+          </div>
         ) : (
           <button onClick={() => setShowNotes(true)} style={{
-            background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace",
-            fontSize: 12, color: "#a09b93", padding: "6px 0 0 0",
+            background: "none", border: "none", cursor: "pointer", fontFamily: C.mono,
+            fontSize: 12, color: C.textFaint, padding: "4px 0 10px 0",
           }}>+ add notes</button>
         )}
       </div>
 
-      {/* Active tasks */}
-      {active.map(task => (
-        <TaskItem key={task.id} task={task} onToggle={toggleTask} onUpdate={handleUpdate} onDelete={handleDelete} />
+      {active.map((task, i) => (
+        <TaskItem key={task.id} task={task} index={i} onToggle={toggleTask} onUpdate={handleUpdate} onDelete={handleDelete} />
       ))}
 
-      {/* Completed tasks */}
       {completed.length > 0 && (
-        <div style={{ marginTop: 24 }}>
+        <div style={{ marginTop: 28 }}>
           <div style={{
-            fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#a09b93",
-            marginBottom: 10, padding: "0 4px",
-          }}>completed ({completed.length})</div>
-          {completed.map(task => (
-            <TaskItem key={task.id} task={task} onToggle={toggleTask} onUpdate={handleUpdate} onDelete={handleDelete} />
+            fontFamily: C.mono, fontSize: 11, letterSpacing: 3,
+            textTransform: "uppercase", color: C.textDimmed, marginBottom: 10, padding: "0 4px",
+          }}>completed</div>
+          {completed.map((task, i) => (
+            <TaskItem key={task.id} task={task} index={i + active.length} onToggle={toggleTask} onUpdate={handleUpdate} onDelete={handleDelete} />
           ))}
         </div>
       )}
 
       {list.tasks.length === 0 && (
-        <div style={{ textAlign: "center", padding: "40px 0", color: "#c4c0b8" }}>
+        <div style={{ textAlign: "center", padding: "40px 0", color: C.textDimmed }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
-          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15 }}>No tasks yet — add one above</div>
+          <div style={{ fontFamily: C.sans, fontSize: 15 }}>No tasks yet — add one above</div>
         </div>
       )}
     </div>
@@ -383,79 +443,85 @@ function HomeView({ onCreate, onOpen, onAdmin }) {
     <div style={{ maxWidth: 440, margin: "0 auto" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
         <div style={{
-          fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: 3,
-          textTransform: "uppercase", color: "#a09b93", marginBottom: 12,
-        }}>shared task lists</div>
+          fontFamily: C.mono, fontSize: 11, letterSpacing: 4,
+          textTransform: "uppercase", color: C.accent, marginBottom: 16,
+        }}>⬡ shared task lists</div>
         <h1 style={{
-          fontFamily: "'DM Sans', sans-serif", fontSize: 36, fontWeight: 700,
-          color: "#2c2a25", margin: 0, lineHeight: 1.2,
+          fontFamily: C.sans, fontSize: 36, fontWeight: 700,
+          color: C.text, margin: 0, lineHeight: 1.1, letterSpacing: -0.5,
         }}>Tasks</h1>
         <p style={{
-          fontFamily: "'DM Sans', sans-serif", fontSize: 15, color: "#8a847b",
+          fontFamily: C.sans, fontSize: 15, color: C.textMuted,
           marginTop: 12, lineHeight: 1.5,
         }}>Create a list and share the link with anyone.<br/>No accounts needed.</p>
       </div>
 
       <div style={{
-        padding: 24, background: "#fff", borderRadius: 12,
-        border: "1px solid #e8e4dc", marginBottom: 16,
+        padding: "6px 6px 6px 22px", background: C.card, borderRadius: 14,
+        border: `1px solid ${C.border}`, marginBottom: 12,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}>
         <div style={{
-          fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: 2,
-          textTransform: "uppercase", color: "#a09b93", marginBottom: 14,
+          fontFamily: C.mono, fontSize: 11, letterSpacing: 3,
+          textTransform: "uppercase", color: C.textFaint, marginTop: 10, marginBottom: 6,
         }}>new list</div>
-        <input value={listName} onChange={(e) => setListName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") onCreate(listName.trim() || "Untitled list"); }}
-          placeholder="List name (e.g. Office supplies)" style={{
-            width: "100%", padding: "12px 0", border: "none", borderBottom: "1.5px solid #e8e4dc",
-            background: "transparent", fontSize: 16, fontFamily: "'DM Sans', sans-serif",
-            fontWeight: 500, outline: "none", color: "#2c2a25", boxSizing: "border-box",
-          }}
-        />
-        <button onClick={() => onCreate(listName.trim() || "Untitled list")} style={{
-          width: "100%", marginTop: 16, padding: "12px", background: "#2c2a25",
-          color: "#faf8f4", border: "none", borderRadius: 8, fontSize: 14,
-          fontFamily: "'DM Mono', monospace", cursor: "pointer", fontWeight: 500, letterSpacing: 0.5,
-        }}>create list →</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <input value={listName} onChange={(e) => setListName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") onCreate(listName.trim() || "Untitled list"); }}
+            placeholder="List name (e.g. Office supplies)" style={{
+              flex: 1, padding: "12px 0", border: "none",
+              background: "transparent", fontSize: 15, fontFamily: C.sans,
+              fontWeight: 500, outline: "none", color: C.text, boxSizing: "border-box",
+            }}
+          />
+          <button onClick={() => onCreate(listName.trim() || "Untitled list")} style={{
+            padding: "10px 20px", background: C.accent, color: "#fff",
+            border: "none", borderRadius: 10, fontSize: 13,
+            fontFamily: C.mono, fontWeight: 500, cursor: "pointer",
+            transition: "all 0.3s ease",
+          }}>create →</button>
+        </div>
       </div>
 
       <div style={{
-        padding: 24, background: "#fff", borderRadius: 12,
-        border: "1px solid #e8e4dc",
+        padding: "6px 6px 6px 22px", background: C.card, borderRadius: 14,
+        border: `1px solid ${C.border}`,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}>
         <div style={{
-          fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: 2,
-          textTransform: "uppercase", color: "#a09b93", marginBottom: 14,
+          fontFamily: C.mono, fontSize: 11, letterSpacing: 3,
+          textTransform: "uppercase", color: C.textFaint, marginTop: 10, marginBottom: 6,
         }}>open existing list</div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <input value={joinId} onChange={(e) => setJoinId(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && joinId.trim()) onOpen(joinId.trim()); }}
             placeholder="Paste list ID or link" style={{
-              flex: 1, padding: "12px 0", border: "none", borderBottom: "1.5px solid #e8e4dc",
-              background: "transparent", fontSize: 15, fontFamily: "'DM Mono', monospace",
-              outline: "none", color: "#2c2a25", letterSpacing: 1, boxSizing: "border-box",
+              flex: 1, padding: "12px 0", border: "none",
+              background: "transparent", fontSize: 15, fontFamily: C.mono,
+              outline: "none", color: C.text, letterSpacing: 1, boxSizing: "border-box",
             }}
           />
           <button onClick={() => joinId.trim() && onOpen(joinId.trim())}
             disabled={!joinId.trim()} style={{
-              padding: "10px 20px", background: joinId.trim() ? "#f0ece4" : "#f5f3ee",
-              color: joinId.trim() ? "#2c2a25" : "#c4c0b8", border: "none", borderRadius: 8,
-              fontSize: 14, fontFamily: "'DM Mono', monospace", cursor: joinId.trim() ? "pointer" : "default",
-              alignSelf: "flex-end",
+              padding: "10px 20px", background: joinId.trim() ? C.btnMuted : "#fafafa",
+              color: joinId.trim() ? C.text : C.textDimmed, border: "none", borderRadius: 10,
+              fontSize: 13, fontFamily: C.mono, fontWeight: 500,
+              cursor: joinId.trim() ? "pointer" : "default",
             }}>open</button>
         </div>
       </div>
 
-      {/* Admin link */}
       <div style={{ textAlign: "center", marginTop: 32 }}>
         <button onClick={onAdmin} style={{
-          background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace",
-          fontSize: 12, color: "#c4c0b8",
+          background: "none", border: "none", cursor: "pointer", fontFamily: C.mono,
+          fontSize: 12, color: C.textDimmed,
         }}>admin</button>
       </div>
     </div>
   );
 }
+
+/* ── Admin ── */
 
 function AdminView({ onBack, onOpenList }) {
   const [authed, setAuthed] = useState(false);
@@ -489,7 +555,7 @@ function AdminView({ onBack, onOpenList }) {
   const handleDelete = async (listId, listName) => {
     if (!confirm(`Delete "${listName}" and all its tasks? This cannot be undone.`)) return;
     setDeleting(listId);
-    await deleteList(listId);
+    await deleteListDb(listId);
     setLists((prev) => prev.filter((l) => l.id !== listId));
     setDeleting(null);
   };
@@ -498,35 +564,42 @@ function AdminView({ onBack, onOpenList }) {
     return (
       <div style={{ maxWidth: 400, margin: "0 auto" }}>
         <button onClick={onBack} style={{
-          background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace",
-          fontSize: 13, color: "#8a847b", padding: "4px 0", marginBottom: 32,
+          background: "none", border: "none", cursor: "pointer", fontFamily: C.mono,
+          fontSize: 13, color: C.textFaint, padding: "4px 0", marginBottom: 32,
         }}>← back</button>
+        <div style={{
+          fontFamily: C.mono, fontSize: 11, letterSpacing: 4,
+          textTransform: "uppercase", color: C.accent, marginBottom: 16,
+        }}>⬡ admin</div>
         <h1 style={{
-          fontFamily: "'DM Sans', sans-serif", fontSize: 28, fontWeight: 700,
-          color: "#2c2a25", margin: "0 0 8px 0",
-        }}>Admin</h1>
+          fontFamily: C.sans, fontSize: 28, fontWeight: 700,
+          color: C.text, margin: "0 0 8px 0", letterSpacing: -0.5,
+        }}>Admin Panel</h1>
         <p style={{
-          fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: "#8a847b", marginBottom: 24,
+          fontFamily: C.sans, fontSize: 14, color: C.textMuted, marginBottom: 24,
         }}>Enter admin password to manage lists.</p>
         <div style={{
-          padding: 24, background: "#fff", borderRadius: 12, border: "1px solid #e8e4dc",
+          padding: "6px 6px 6px 22px", background: C.card, borderRadius: 14,
+          border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         }}>
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password"
-            onKeyDown={(e) => { if (e.key === "Enter") handleLogin(); }}
-            placeholder="Password" autoFocus style={{
-              width: "100%", padding: "12px 0", border: "none", borderBottom: "1.5px solid #e8e4dc",
-              background: "transparent", fontSize: 16, fontFamily: "'DM Mono', monospace",
-              outline: "none", color: "#2c2a25", boxSizing: "border-box",
-            }}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password"
+              onKeyDown={(e) => { if (e.key === "Enter") handleLogin(); }}
+              placeholder="Password" autoFocus style={{
+                flex: 1, padding: "14px 0", border: "none",
+                background: "transparent", fontSize: 16, fontFamily: C.mono,
+                outline: "none", color: C.text, boxSizing: "border-box",
+              }}
+            />
+            <button onClick={handleLogin} style={{
+              padding: "10px 20px", background: C.btnBg, color: C.btnText,
+              border: "none", borderRadius: 10, fontSize: 13,
+              fontFamily: C.mono, fontWeight: 500, cursor: "pointer",
+            }}>log in →</button>
+          </div>
           {error && (
-            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: "#c44", marginTop: 10 }}>{error}</div>
+            <div style={{ fontFamily: C.sans, fontSize: 13, color: C.danger, padding: "8px 0 10px 0" }}>{error}</div>
           )}
-          <button onClick={handleLogin} style={{
-            width: "100%", marginTop: 16, padding: "12px", background: "#2c2a25",
-            color: "#faf8f4", border: "none", borderRadius: 8, fontSize: 14,
-            fontFamily: "'DM Mono', monospace", cursor: "pointer",
-          }}>log in →</button>
         </div>
       </div>
     );
@@ -536,51 +609,56 @@ function AdminView({ onBack, onOpenList }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
         <button onClick={onBack} style={{
-          background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace",
-          fontSize: 13, color: "#8a847b", padding: "4px 0",
+          background: "none", border: "none", cursor: "pointer", fontFamily: C.mono,
+          fontSize: 13, color: C.textFaint, padding: "4px 0",
         }}>← back</button>
         <button onClick={refresh} style={{
-          background: "#f0ece4", border: "none", borderRadius: 6,
-          padding: "6px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace",
-          fontSize: 12, color: "#6b6660",
+          background: C.btnMuted, border: "none", borderRadius: 8,
+          padding: "6px 14px", cursor: "pointer", fontFamily: C.mono,
+          fontSize: 12, color: C.textMuted,
         }}>↻ refresh</button>
       </div>
 
+      <div style={{
+        fontFamily: C.mono, fontSize: 11, letterSpacing: 4,
+        textTransform: "uppercase", color: C.accent, marginBottom: 16,
+      }}>⬡ admin</div>
       <h1 style={{
-        fontFamily: "'DM Sans', sans-serif", fontSize: 28, fontWeight: 700,
-        color: "#2c2a25", margin: "0 0 6px 0",
-      }}>Admin Panel</h1>
-      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#a09b93", marginBottom: 32 }}>
+        fontFamily: C.sans, fontSize: 28, fontWeight: 700,
+        color: C.text, margin: "0 0 6px 0", letterSpacing: -0.5,
+      }}>All Lists</h1>
+      <div style={{ fontFamily: C.mono, fontSize: 12, color: C.textFaint, marginBottom: 32 }}>
         {lists.length} list{lists.length !== 1 ? "s" : ""} total
       </div>
 
       {loading && (
-        <div style={{ textAlign: "center", padding: 40, color: "#a09b93", fontFamily: "'DM Mono', monospace", fontSize: 14 }}>
+        <div style={{ textAlign: "center", padding: 40, color: C.textFaint, fontFamily: C.mono, fontSize: 14 }}>
           loading...
         </div>
       )}
 
       {!loading && lists.length === 0 && (
-        <div style={{ textAlign: "center", padding: 40, color: "#c4c0b8" }}>
+        <div style={{ textAlign: "center", padding: 40, color: C.textDimmed }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
-          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 15 }}>No lists yet</div>
+          <div style={{ fontFamily: C.sans, fontSize: 15 }}>No lists yet</div>
         </div>
       )}
 
       {lists.map((list) => (
         <div key={list.id} style={{
-          padding: "16px 20px", background: "#fff", borderRadius: 10,
-          border: "1px solid #e8e4dc", marginBottom: 8,
+          padding: "18px 22px", background: C.card, borderRadius: 14,
+          border: `1px solid ${C.border}`, marginBottom: 6,
           display: "flex", alignItems: "center", gap: 14,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
         }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontFamily: "'DM Sans', sans-serif", fontSize: 15, fontWeight: 500, color: "#2c2a25",
+              fontFamily: C.sans, fontSize: 15, fontWeight: 500, color: C.text,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>{list.name}</div>
             <div style={{
-              fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#a09b93", marginTop: 4,
-              display: "flex", gap: 12, flexWrap: "wrap",
+              fontFamily: C.mono, fontSize: 12, color: C.textFaint, marginTop: 5,
+              display: "flex", gap: 14, flexWrap: "wrap",
             }}>
               <span>id: {list.id}</span>
               <span>{list.totalTasks} task{list.totalTasks !== 1 ? "s" : ""}</span>
@@ -589,16 +667,17 @@ function AdminView({ onBack, onOpenList }) {
             </div>
           </div>
           <button onClick={() => onOpenList(list.id)} style={{
-            padding: "6px 12px", background: "#f0ece4", border: "none", borderRadius: 6,
-            fontSize: 12, fontFamily: "'DM Mono', monospace", cursor: "pointer", color: "#6b6660",
+            padding: "7px 14px", background: C.btnMuted, border: "none", borderRadius: 8,
+            fontSize: 12, fontFamily: C.mono, fontWeight: 500, cursor: "pointer", color: C.textMuted,
             flexShrink: 0,
           }}>open</button>
           <button onClick={() => handleDelete(list.id, list.name)}
             disabled={deleting === list.id} style={{
-              padding: "6px 12px", background: deleting === list.id ? "#f5f3ee" : "transparent",
-              color: deleting === list.id ? "#a09b93" : "#c44",
-              border: "1px solid #e4cccc", borderRadius: 6, fontSize: 12,
-              fontFamily: "'DM Mono', monospace", cursor: deleting === list.id ? "default" : "pointer",
+              padding: "7px 14px", background: deleting === list.id ? C.cardMuted : "transparent",
+              color: deleting === list.id ? C.textFaint : C.danger,
+              border: `1px solid ${C.dangerBorder}`, borderRadius: 8, fontSize: 12,
+              fontFamily: C.mono, fontWeight: 500,
+              cursor: deleting === list.id ? "default" : "pointer",
               flexShrink: 0,
             }}>{deleting === list.id ? "..." : "delete"}</button>
         </div>
@@ -612,14 +691,12 @@ export default function TaskManager() {
   const [currentList, setCurrentList] = useState(null);
   const [showAdmin, setShowAdmin] = useState(false);
 
-  // Read from URL hash on load
   useEffect(() => {
     const hash = window.location.hash.slice(1);
     if (hash === "admin") setShowAdmin(true);
     else if (hash) setCurrentList(hash);
   }, []);
 
-  // Update URL hash when navigating
   const navigate = (listId) => {
     setShowAdmin(false);
     if (listId) {
@@ -636,7 +713,6 @@ export default function TaskManager() {
     window.location.hash = "admin";
   };
 
-  // Handle browser back/forward
   useEffect(() => {
     const onHash = () => {
       const hash = window.location.hash.slice(1);
@@ -660,8 +736,8 @@ export default function TaskManager() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'DM Sans', sans-serif" }}>
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "48px 20px 80px" }}>
+    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: C.sans }}>
+      <div style={{ maxWidth: 540, margin: "0 auto", padding: "56px 20px 80px" }}>
         {showAdmin ? (
           <AdminView onBack={() => navigate(null)} onOpenList={(id) => navigate(id)} />
         ) : currentList ? (
